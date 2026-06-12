@@ -1,6 +1,9 @@
 from scapy.sendrecv import sniff
 from scapy.layers.inet import TCP, IP, UDP
 from scapy.layers.inet6 import IPv6
+from scapy.layers.dns import DNSQR
+
+
 packet_no = 1
 
 def get_service(port):
@@ -22,6 +25,17 @@ def get_service(port):
 
 def packet_callback(packet):
     global packet_no
+
+    if packet.haslayer(DNSQR):
+
+        print("\n====================")
+        print("      DNS QUERY")
+        print("====================")
+
+        print(
+             "Domain:",
+             packet[DNSQR].qname.decode()
+        )
 
     if packet.haslayer(TCP):
 
