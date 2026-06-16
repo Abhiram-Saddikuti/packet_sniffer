@@ -1,7 +1,7 @@
 from scapy.sendrecv import sniff
 from scapy.layers.inet import TCP, IP, UDP
 from scapy.layers.inet6 import IPv6
-from scapy.layers.dns import DNSQR
+from scapy.layers.dns import DNS, DNSQR, DNSRR
 
 
 packet_no = 1
@@ -25,17 +25,19 @@ def get_service(port):
 
 def packet_callback(packet):
     global packet_no
+    print(f"\nPacket No. : {packet_no}")
+    packet_no += 1
 
-    if packet.haslayer(DNSQR):
+    if packet.haslayer(DNS):
 
         print("\n====================")
         print("      DNS QUERY")
         print("====================")
 
-        print(
-             "Domain:",
-             packet[DNSQR].qname.decode()
-        )
+        if packet[DNS].qr == 0 :
+            print("DNS Query")
+        if packet[DNS].qr == 1 :
+            print("DNS Response")
 
     if packet.haslayer(TCP):
 
@@ -60,8 +62,7 @@ def packet_callback(packet):
         print("Destination Port:", packet[TCP].dport,
               f"({get_service(packet[TCP].dport)})")
         print("Packet Length   :", len(packet), "bytes")
-        print(f"Packet No. : {packet_no}")
-        packet_no += 1
+        
 
 
 
@@ -88,8 +89,6 @@ def packet_callback(packet):
         print("Destination Port:", packet[UDP].dport,
               f"({get_service(packet[UDP].dport)})")
         print("Packet Length   :", len(packet), "bytes")
-        print(f"Packet No. : {packet_no}")
-        packet_no += 1
 
 
 
