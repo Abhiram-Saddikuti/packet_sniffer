@@ -3,7 +3,7 @@ from scapy.layers.inet import TCP, IP, UDP
 from scapy.layers.inet6 import IPv6
 from scapy.layers.dns import DNS, DNSQR, DNSRR
 
-
+handshakes = {}
 packet_no = 1
 
 def get_service(port):
@@ -51,18 +51,40 @@ def packet_callback(packet):
             print("Source IP       :", packet[IP].src)
             print("Destination IP  :", packet[IP].dst)
 
+            src_ip = packet[IP].src
+            dest_ip = packet[IP].dst
+
         elif packet.haslayer(IPv6):
 
             print("IP Version      : IPv6")
             print("Source IP       :", packet[IPv6].src)
             print("Destination IP  :", packet[IPv6].dst)
 
+            src_ip = packet[IPv6].src
+            dest_ip = packet[IPv6].dst
+
         print("Source Port     :", packet[TCP].sport,
               f"({get_service(packet[TCP].sport)})")
         print("Destination Port:", packet[TCP].dport,
               f"({get_service(packet[TCP].dport)})")
         print("Packet Length   :", len(packet), "bytes")
-        
+
+
+        flags = packet[TCP].flags
+        connection = (src_ip, dest_ip, packet[TCP].dport)
+        if flags == 'S' :
+            handshakes[connection] = "SYN"
+            print("[HANDSHAKE] SYN STORED")
+        elif flags == "SA" :
+            reverse_connection = (dest_ip, src_ip, packet[TCP].sport)
+            if reverse_connection in handshakes :
+                handshakes[reverse_connection] = "SYN ACK"
+                print("[HANDSHSKE] SYN ACK SORTED")
+        elif flags == "A" :
+            if connection in handshakes : 
+                if handshakes[connection] == "SYN ACK" :
+                    print("\n[HANDSHAKE] COMPLETE")
+                    del handshakes[connection]
 
 
 
