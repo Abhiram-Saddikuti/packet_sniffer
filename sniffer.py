@@ -1,7 +1,16 @@
 from scapy.sendrecv import sniff
 from scapy.layers.inet import TCP, IP, UDP
 from scapy.layers.inet6 import IPv6
-from scapy.layers.dns import DNS, DNSQR, DNSRR
+from scapy.layers.dns import DNS
+
+BOLD = "\033[1m"
+GREEN = "\033[92m"
+BLUE = "\033[94m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+CYAN = "\033[96m"
+MAGENTA = "\033[95m"
+RESET = "\033[0m"
 
 handshakes = {}
 packet_no = 1
@@ -25,24 +34,25 @@ def get_service(port):
 
 def packet_callback(packet):
     global packet_no
-    print(f"\nPacket No. : {packet_no}")
-    packet_no += 1
 
     if packet.haslayer(DNS):
+        print(f"\nPacket No. : {packet_no}")
+        packet_no += 1
 
         print("\n====================")
-        print("      DNS QUERY")
+        if packet[DNS].qr == 0 :
+            print(f"{BOLD}DNS QUERY{RESET}")
+        if packet[DNS].qr == 1 :
+            print(f"{BOLD}DNS RESPONSE{RESET}")
         print("====================")
 
-        if packet[DNS].qr == 0 :
-            print("DNS Query")
-        if packet[DNS].qr == 1 :
-            print("DNS Response")
 
     if packet.haslayer(TCP):
+        print(f"\nPacket No. : {packet_no}")
+        packet_no += 1
 
         print("\n====================")
-        print("     TCP Packet")
+        print(f"     {BOLD}TCP Packet{RESET}")
         print("====================")
 
         if packet.haslayer(IP):
@@ -79,19 +89,23 @@ def packet_callback(packet):
             reverse_connection = (dest_ip, src_ip, packet[TCP].sport)
             if reverse_connection in handshakes :
                 handshakes[reverse_connection] = "SYN ACK"
-                print("[HANDSHSKE] SYN ACK SORTED")
+                print("[HANDSHAKE] SYN ACK STORED")
         elif flags == "A" :
             if connection in handshakes : 
                 if handshakes[connection] == "SYN ACK" :
-                    print("\n[HANDSHAKE] COMPLETE")
+                    print(f"\n{GREEN}[HANDSHAKE] COMPLETE{RESET}")
+                    print("Client : ",src_ip)
+                    print("Server : ",dest_ip)
                     del handshakes[connection]
 
 
 
     elif packet.haslayer(UDP):
+        print(f"\nPacket No. : {packet_no}")
+        packet_no += 1
 
         print("\n====================")
-        print("     UDP Packet")
+        print(f"     {BOLD}UDP Packet{RESET}")
         print("====================")
 
         if packet.haslayer(IP):
