@@ -18,6 +18,7 @@ MAGENTA = "\033[95m"
 RESET = "\033[0m"
 
 session_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+service_counter = {} #for top services
 alerted_ips = set() #threat IPs for port scanning
 scan_tracker = {} #stores ports open for IPs
 handshakes = {} #stores S,SA,A packets for HANDSHAKES
@@ -39,8 +40,10 @@ portscan_alerts = 0
 arp_alerts = 0
 dns_alerts = 0
 
+#start timestamp
 start_time = datetime.now()
 
+#makes dirs and captures logs
 os.makedirs("captures", exist_ok=True)
 os.makedirs("alerts", exist_ok=True)
 capture_log = f"captures/capture_{session_time}.log"
@@ -56,27 +59,49 @@ def get_service(port): #gets ports service name by number
         23: "TELNET",
         25: "SMTP",
         53: "DNS",
+        67: "DHCP",
+        68: "DHCP",
+        69: "TFTP",
         80: "HTTP",
         110: "POP3",
+        123: "NTP",
         143: "IMAP",
-        443: "HTTPS"
+        161: "SNMP",
+        389: "LDAP",
+        443: "HTTPS",
+        587: "SMTP",
+        993: "IMAPS",
+        995: "POP3S",
+        3306: "MySQL",
+        3389: "RDP",
+        5432: "PostgreSQL",
+        6379: "Redis",
+        8080: "HTTP-ALT",
+        8443: "HTTPS-ALT"
     }
 
     return services.get(port, "Unknown")
 
-def print_banner() :
+def update_service_counter(service): #for top services
+
+    if service not in service_counter:
+        service_counter[service] = 0
+
+    service_counter[service] += 1
+
+def print_banner() : #banner function
     print(f"""{CYAN}
 ==========================================
              Packet Sniffer
 ==========================================
 {RESET}""")
 
-
+#HTTP Block
 def handle_http(packet) :
 
     payload = packet[Raw].load.decode(errors="ignore")
     lines = payload.split("\r\n")
-    if payload.startswith(("GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS")) :
+    if payload.startswith(("GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS")) : #REQUESTS
         global http_requests
         http_requests += 1
 
@@ -97,7 +122,7 @@ def handle_http(packet) :
             f"HTTP REQUEST | {lines[0]}"
                 )
     
-    elif payload.startswith("HTTP/") :
+    elif payload.startswith("HTTP/") : #RESPONSES
         global http_responses
         http_responses += 1
         print(f"\n{MAGENTA}===================={RESET}")
@@ -108,9 +133,9 @@ def handle_http(packet) :
         for line in lines :
             if line.startswith("Server:"):
                 print(line)
-            if line.startswith("Content-Type:"):
+            elif line.startswith("Content-Type:"):
                 print(line)
-            if line.startswith("Content-Length:"):
+            elif line.startswith("Content-Length:"):
                 print(line)
         log_capture(
             f"HTTP RESPONSE | {lines[0]}"
@@ -150,12 +175,14 @@ def handle_udp(packet) :
             f"({get_service(packet[UDP].dport)})")
     print("Packet Length   :", len(packet), "bytes") #packet length
 
+    update_service_counter(get_service(packet[UDP].dport))
+
     log_capture(
         f"UDP | {src_ip}:{packet[UDP].sport} -> {dest_ip}:{packet[UDP].dport}"
     )
 
 
-def get_dns_record_type(record_type) :
+def get_dns_record_type(record_type) : #returns DNS record type 
     types = {
         1:"A",
         28:"AAAA",
@@ -178,14 +205,15 @@ def handle_dns(packet) :
         print(f"{BLUE}     DNS RESPONSE{RESET}")
     print(f"{BLUE}===================={RESET}")
 
-    if packet[DNS].qr ==1 :
+    if packet[DNS].qr ==1 : #DNS RESPONSES
+        update_service_counter("DNS")
         if packet.haslayer(DNSRR) :
             record_type = get_dns_record_type(packet[DNSRR].type)
-            domain = packet[DNSRR].rrname.decode()
-            ip = str(packet[DNSRR].rdata)
-            key = (domain, record_type)
+            domain = packet[DNSRR].rrname.decode() #domain
+            ip = str(packet[DNSRR].rdata) #its IP
+            key = (domain, record_type) #includes record
 
-            if key not in dns_table :
+            if key not in dns_table : #new Domain
                 dns_table[key] = ip
                 print(f"\n{GREEN}[DNS] Added Domain{RESET}")
                 print(f"Domain      : {domain}")
@@ -196,12 +224,12 @@ def handle_dns(packet) :
                     )
             
             else :
-                if dns_table[key] == ip :
+                if dns_table[key] == ip : #same IP
                     print(f"\n{GREEN}[DNS] Domain Verified{RESET}")
                     print(f"Domain      : {domain}")
                     print(f"Record Type : {record_type}")
                     print(f"IP Address  : {ip}")
-                else : 
+                else :  #diff IP
                     global dns_alerts
                     dns_alerts += 1
                     print(f"\n{YELLOW}[DNS] Possible DNS Poisoning Detected{RESET}")
@@ -291,6 +319,8 @@ def handle_tcp(packet) :
               f"({get_service(packet[TCP].dport)})")
     print("Packet Length   :", len(packet), "bytes") #packet length
 
+    update_service_counter(get_service(packet[TCP].dport))
+
 
     flags = packet[TCP].flags #SYN, SYN ACK, ACK
     connection = (src_ip, dest_ip, packet[TCP].dport) #TCP connection stored as 'connection'
@@ -337,7 +367,7 @@ def handle_tcp(packet) :
                     f"HANDSHAKE | {src_ip} <-> {dest_ip}"
                     )
 
-    if packet.haslayer(Raw) :
+    if packet.haslayer(Raw) : #gives it to HTTP Block
         handle_http(packet)
 
     log_capture(
@@ -345,8 +375,6 @@ def handle_tcp(packet) :
     )
 
     
-
-
 
 def packet_callback(packet): #reads packets
 
@@ -363,19 +391,23 @@ def packet_callback(packet): #reads packets
         handle_udp(packet)
 
 
-def print_summary():
-    global tcp_packets, arp_packets, dns_packets, udp_packets
+def print_summary(): #print summary block
+    
     total_packets = tcp_packets + arp_packets + dns_packets + udp_packets
-    runtime = datetime.now() - start_time
+    runtime = datetime.now() - start_time 
+
+    #for runtime string
     total_seconds = int(runtime.total_seconds())
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
 
+    #Banner
     print(f"\n{CYAN}=========================================={RESET}")
     print(f"{CYAN}          CAPTURE SUMMARY{RESET}")
     print(f"{CYAN}=========================================={RESET}")
 
+    #Runtime String
     if hours > 0 :
         runtime_string = f"{hours} hr {minutes} min {seconds} sec"
     elif minutes >0 :
@@ -384,6 +416,7 @@ def print_summary():
         runtime_string = f"{seconds} sec"
     print(f"Runtime             : {runtime_string}")
 
+    #Stats
     print(f"\nPackets Captured    : {total_packets}")
 
     print("\nProtocol Statistics")
@@ -410,9 +443,23 @@ def print_summary():
     print(f"Known Devices       : {len(arp_table)}")
     print(f"Known Domains       : {len(dns_table)}")
 
+    #Top Services
+    print("\nTop Services")
+    print("-------------------")
+
+    sorted_services = sorted(
+        [(service, count) for service, count in service_counter.items()
+         if service != "Unknown"],
+        key=lambda item: item[1],
+        reverse=True
+    )
+
+    for service, count in sorted_services[:5]:
+        print(f"{service:<15}: {count}")
+
     print(f"{CYAN}=========================================={RESET}")
 
-
+#Captures log messages with timestamps
 def log_capture(message) :
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(capture_log, "a") as file:
@@ -422,11 +469,11 @@ def log_alert(message):
     with open(alert_log, "a") as file:
         file.write(f"[{timestamp}] {message}\n")
 
+#Starts Logging
 log_capture("=" * 60)
 log_capture("Packet Sniffer Capture Started")
 log_capture(f"Session Time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 log_capture("=" * 60)
-
 log_alert("=" * 60)
 log_alert("Packet Sniffer Alert Log Started")
 log_alert(f"Session Time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -434,17 +481,17 @@ log_alert("=" * 60)
 
 print_banner()
 
-
+#sniff surrounded in try to print summary on keyboard interrupt
 try :   
     sniff(prn=packet_callback, store=False) #starts sniffing packets until terminated
 finally :
     print_summary()
     
+    #Ends Logging
     log_capture("=" * 60)
     log_capture("Packet Sniffer Capture Finished")
     log_capture(f"Session End : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     log_capture("=" * 60)
-
     log_alert("=" * 60)
     log_alert("Packet Sniffer Alert Log Finished")
     log_alert(f"Session End : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
