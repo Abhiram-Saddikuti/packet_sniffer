@@ -47,6 +47,40 @@ def print_banner() :
 ==========================================
 {RESET}""")
 
+
+def handle_http(packet) :
+    payload = packet[Raw].load.decode(errors="ignore")
+    lines = payload.split("\r\n")
+    if payload.startswith(("GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS")) :
+        print(f"\n{MAGENTA}===================={RESET}")
+        print(f"{MAGENTA}    HTTP REQUEST{RESET}")
+        print(f"{MAGENTA}===================={RESET}")
+
+        print("Request : ", lines[0])
+        for line in lines : 
+            if line.startswith("Host:"):
+                print(line)
+            elif line.startswith("User-Agent:"):
+                print(line)
+            elif line.startswith("Accept:"):
+                print(line)
+    
+    elif payload.startswith("HTTP/") :
+        print(f"\n{MAGENTA}===================={RESET}")
+        print(f"{MAGENTA}   HTTP RESPONSE{RESET}")
+        print(f"{MAGENTA}===================={RESET}")
+
+        print("Status : ", lines[0])
+        for line in lines :
+            if line.startswith("Server:"):
+                print(line)
+            if line.startswith("Content-Type:"):
+                print(line)
+            if line.startswith("Content-Length:"):
+                print(line)
+
+
+
 #UDP Block
 def handle_udp(packet) :
     global packet_no
@@ -234,7 +268,10 @@ def handle_tcp(packet) :
                 print("Server : ",dest_ip)
                 del handshakes[connection] #deletes the current connection IPs
 
-    
+    if packet.haslayer(Raw) :
+        handle_http(packet)
+
+
 
 def packet_callback(packet): #reads packets
     global packet_no
