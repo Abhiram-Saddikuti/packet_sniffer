@@ -1,6 +1,9 @@
 #Virtual Environment
 venv/
 
+#Log Directories
+captures/
+alerts/
 
 
 # Byte-compiled / optimized / DLL files
