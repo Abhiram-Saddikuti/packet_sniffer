@@ -2,6 +2,7 @@ from scapy.sendrecv import sniff #for sniffing all packets
 from scapy.layers.inet import TCP, IP, UDP #for accessing layers (TCP, IP, UDP)
 from scapy.layers.inet6 import IPv6 #for accessing IPv6 layer
 from scapy.layers.dns import DNS #for accessing DNS queries
+from scapy.layers.l2 import ARP #for accessing ARP layer
 
 BOLD = "\033[1m"  #changing output text colour
 GREEN = "\033[92m"
@@ -12,9 +13,11 @@ CYAN = "\033[96m"
 MAGENTA = "\033[95m"
 RESET = "\033[0m"
 
+
 alerted_ips = set() #threat IPs for port scanning
 scan_tracker = {} #stores ports open for IPs
 handshakes = {} #stores S,SA,A packets for HANDSHAKES
+arp_table = {} #stores IP-MAC ARP mappings
 packet_no = 1 #packet counter
 
 def get_service(port): #gets ports service name by number
@@ -47,6 +50,37 @@ def packet_callback(packet): #reads packets
         if packet[DNS].qr == 1 : #response
             print(f"{BOLD}DNS RESPONSE{RESET}")
         print("====================")
+
+
+    if packet.haslayer(ARP):
+        if packet[ARP].op == 2 : #Only looks at ARP replys
+            print(f"\n{CYAN}===================={RESET}")
+            print(f"{CYAN}      ARP Reply{RESET}")
+            print(f"{CYAN}===================={RESET}")
+
+            ip = packet[ARP].psrc
+            mac = packet[ARP].hwsrc
+            print("IP Address : ", ip)
+            print("MAC Address : ", mac)
+
+            if ip not in arp_table : #first time seeing IP
+                arp_table[ip] = mac
+                print(f"{GREEN}[ARP]{RESET} New Device Learned")
+                print(f"{ip} --> {mac}")
+                print(f"Known Devices : {len(arp_table)}")
+
+            else : #IP already present
+                if arp_table[ip] != mac : #different MAC add.
+                    print(f"\n{RED}[ALERT] POSSIBLE ARP SPOOFING{RESET}")
+                    print("IP Address : ", ip)
+                    print("Original MAC : ", arp_table[ip])
+                    print("New MAC : ", mac)
+                else : #same MAC add.
+                    print(f"{GREEN}[ARP]{RESET} Verified")
+                    print(f"IP Address  : {ip}")
+                    print(f"MAC Address : {mac}")
+
+        
 
 
     if packet.haslayer(TCP): #TCP packets
@@ -93,7 +127,7 @@ def packet_callback(packet): #reads packets
             scan_tracker[src_ip].add(packet[TCP].dport)
             print(f"{YELLOW}[SCAN TRACKER]{RESET}", src_ip, "->", scan_tracker[src_ip])
 
-            if (len(scan_tracker[src_ip]) >= 2 #threshold for PORT SCAN
+            if (len(scan_tracker[src_ip]) >= 5 #threshold for PORT SCAN
                 and src_ip not in alerted_ips
                 ):
                 print(f"{RED}[ALERT] POSSIBLE PORT SCAN DETECTED{RESET}")
