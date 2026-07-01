@@ -148,7 +148,7 @@ and statistics.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<Abhiram-Saddikuti>/packet_sniffer.git
+git clone https://github.com/Abhiram-Saddikuti/packet_sniffer.git
 cd packet_sniffer
 ```
 
